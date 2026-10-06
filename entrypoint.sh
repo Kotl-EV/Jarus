@@ -35,8 +35,9 @@ if [ -d /opt/nestcp/skel/yarus/backend ] && [ ! -f /home/container/yarus/backend
     mkdir -p /home/container/yarus
     cp -a /opt/nestcp/skel/yarus/backend /home/container/yarus/backend
 fi
-if [ -d /opt/nestcp/skel/yarus/web ] && [ ! -f /home/container/www/yarus/public_html/index.html ]; then
-    mkdir -p /home/container/www/yarus/public_html
+if [ -d /opt/nestcp/skel/yarus/web ]; then
+    mkdir -p /home/container/www/yarus/public_html/assets
+    rm -f /home/container/www/yarus/public_html/assets/index-*.js /home/container/www/yarus/public_html/assets/index-*.css
     cp -a /opt/nestcp/skel/yarus/web/. /home/container/www/yarus/public_html/
 fi
 

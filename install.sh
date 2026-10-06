@@ -45,7 +45,7 @@ cp -a "$SKEL/nginx/nginx.conf" "$DEST/nginx/nginx.conf" 2>/dev/null || true
 [ -f "$DEST/sites.json" ] || cp -a "$SKEL/sites.json" "$DEST/sites.json" 2>/dev/null || true
 [ -f "$DEST/www/default/public_html/index.php" ] || cp -a "$SKEL/www/default/public_html/index.php" "$DEST/www/default/public_html/index.php" 2>/dev/null || true
 if [ -d "$SKEL/yarus/backend" ] && [ ! -f "$DEST/yarus/backend/package.json" ]; then mkdir -p "$DEST/yarus"; cp -a "$SKEL/yarus/backend" "$DEST/yarus/backend"; fi
-if [ -d "$SKEL/yarus/web" ] && [ ! -f "$DEST/www/yarus/public_html/index.html" ]; then mkdir -p "$DEST/www/yarus/public_html"; cp -a "$SKEL/yarus/web/." "$DEST/www/yarus/public_html/"; fi
+if [ -d "$SKEL/yarus/web" ]; then mkdir -p "$DEST/www/yarus/public_html/assets"; rm -f "$DEST/www/yarus/public_html/assets"/index-*.js "$DEST/www/yarus/public_html/assets"/index-*.css; cp -a "$SKEL/yarus/web/." "$DEST/www/yarus/public_html/"; fi
 chmod +x "$DEST/start.sh"
 echo "NestCP files installed from ${REPO}@${BRANCH}"
 rm -rf "$TMP"

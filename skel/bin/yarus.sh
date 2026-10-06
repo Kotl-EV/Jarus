@@ -34,8 +34,9 @@ yarus_seed_tree() {
     echo "Yarus: copying backend from ${bundle}"
     cp -a "$bundle/backend" /home/container/yarus/backend
   fi
-  if [ -n "$bundle" ] && [ ! -f /home/container/www/yarus/public_html/index.html ] && [ -d "$bundle/web" ]; then
-    echo "Yarus: copying frontend"
+  if [ -n "$bundle" ] && [ -d "$bundle/web" ]; then
+    echo "Yarus: updating frontend"
+    rm -f /home/container/www/yarus/public_html/assets/index-*.js /home/container/www/yarus/public_html/assets/index-*.css
     cp -a "$bundle/web/." /home/container/www/yarus/public_html/
   fi
   rm -f /home/container/www/yarus/public_html/index.php

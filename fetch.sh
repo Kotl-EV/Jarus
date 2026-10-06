@@ -73,9 +73,11 @@ if [ -d "$SKEL/yarus/backend" ] && [ ! -f "$DEST/yarus/backend/package.json" ]; 
     mkdir -p "$DEST/yarus"
     cp -a "$SKEL/yarus/backend" "$DEST/yarus/backend"
 fi
-if [ -d "$SKEL/yarus/web" ] && [ ! -f "$DEST/www/yarus/public_html/index.html" ]; then
-    mkdir -p "$DEST/www/yarus/public_html"
+if [ -d "$SKEL/yarus/web" ]; then
+    mkdir -p "$DEST/www/yarus/public_html/assets"
+    rm -f "$DEST/www/yarus/public_html/assets"/index-*.js "$DEST/www/yarus/public_html/assets"/index-*.css
     cp -a "$SKEL/yarus/web/." "$DEST/www/yarus/public_html/"
+    echo "Yarus frontend replaced"
 fi
 chmod +x "$DEST/start.sh" 2>/dev/null || true
 echo "NestCP files installed from ${REPO}@${BRANCH}"

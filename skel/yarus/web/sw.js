@@ -1,4 +1,4 @@
-const CACHE = 'yarus-tsd-v4';
+const CACHE = 'yarus-tsd-v5';
 const SHELL = ['/', '/tsd', '/manifest.json', '/manifest-tsd.json', '/icon.svg'];
 
 self.addEventListener('install', (e) => {
