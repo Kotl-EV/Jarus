@@ -1,0 +1,92 @@
+{
+    "_comment": "Pazitiv4ik/nestcp-egg — GHCR image ghcr.io/pazitiv4ik/nestcp-webhost:latest",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-08-29T00:00:00+00:00",
+    "name": "jarus",
+    "author": "pazitiv4ik@users.noreply.github.com",
+    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the built site on the server port and the API on 127.0.0.1:$YARUS_API_PORT (default 3001) with a SQLite file in yarus/data. Docker image: ghcr.io/pazitiv4ik/nestcp-webhost:latest",
+    "features": null,
+    "docker_images": {
+        "NestCP GHCR": "ghcr.io/pazitiv4ik/nestcp-webhost:latest"
+    },
+    "file_denylist": [],
+    "startup": "bash start.sh",
+    "config": {
+        "files": "{}",
+        "startup": "{\n    \"done\": \"NestCP web stack is ready\"\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\nset -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\napt-get update -qq >/dev/null\napt-get install -y -qq curl ca-certificates tar >/dev/null\ncd /mnt/server\nREPO=\"${GIT_REPO:-}\"\nBRANCH=\"${GIT_BRANCH:-main}\"\nTOKEN=\"${GIT_TOKEN:-}\"\nmkdir -p www/default/public_html logs run tmp/jobs tmp/client_body tmp/proxy tmp/fastcgi nginx/conf.d php-fpm bin ssl\nif [ -z \"$REPO\" ]; then\n  echo \"GIT_REPO is empty — volume dirs only. Set GIT_REPO to https://github.com/USER/REPO\"\n  exit 0\nfi\nREPO=\"${REPO%.git}\"\nREPO=\"${REPO%/}\"\nif [ -n \"$TOKEN\" ]; then\n  ARCHIVE_URL=\"$(echo \"$REPO\" | sed \"s#https://github.com/#https://x-access-token:${TOKEN}@github.com/#\")/archive/refs/heads/${BRANCH}.tar.gz\"\nelse\n  ARCHIVE_URL=\"${REPO}/archive/refs/heads/${BRANCH}.tar.gz\"\nfi\necho \"Fetching ${ARCHIVE_URL}\"\nTMP=\"$(mktemp -d)\"\ncurl -fsSL -o \"$TMP/src.tgz\" \"$ARCHIVE_URL\"\ntar -xzf \"$TMP/src.tgz\" -C \"$TMP\"\nSKEL=\"$(find \"$TMP\" -type d -name skel | head -n 1)\"\nif [ -z \"$SKEL\" ]; then\n  echo \"ERROR: no skel/ in repo. Upload egg/ as the GitHub repo root.\"\n  exit 1\nfi\ncp -a \"$SKEL/start.sh\" /mnt/server/start.sh\ncp -a \"$SKEL/bin/.\" /mnt/server/bin/ 2>/dev/null || true\ncp -a \"$SKEL/nginx/nginx.conf\" /mnt/server/nginx/nginx.conf 2>/dev/null || true\n[ -f /mnt/server/sites.json ] || cp -a \"$SKEL/sites.json\" /mnt/server/sites.json 2>/dev/null || true\n[ -f /mnt/server/www/default/public_html/index.php ] || cp -a \"$SKEL/www/default/public_html/index.php\" /mnt/server/www/default/public_html/index.php 2>/dev/null || true\nif [ -d \"$SKEL/yarus/backend\" ] && [ ! -f /mnt/server/yarus/backend/package.json ]; then mkdir -p /mnt/server/yarus; cp -a \"$SKEL/yarus/backend\" /mnt/server/yarus/backend; fi\nif [ -d \"$SKEL/yarus/web\" ] && [ ! -f /mnt/server/www/yarus/public_html/index.html ]; then mkdir -p /mnt/server/www/yarus/public_html; cp -a \"$SKEL/yarus/web/.\" /mnt/server/www/yarus/public_html/; fi\nchmod +x /mnt/server/start.sh\necho \"NestCP files installed from ${REPO}@${BRANCH}\"\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Default PHP version",
+            "description": "Default PHP for new vhosts.",
+            "env_variable": "PHP_VERSION",
+            "default_value": "8.3",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:8.1,8.2,8.3,8.4",
+            "field_type": "text"
+        },
+        {
+            "name": "GitHub repo",
+            "description": "Public repo URL. Upload the egg/ folder as the repository root.",
+            "env_variable": "GIT_REPO",
+            "default_value": "https://github.com/Pazitiv4ik/nestcp-egg",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:191",
+            "field_type": "text"
+        },
+        {
+            "name": "Git branch",
+            "description": "Branch to download (usually main).",
+            "env_variable": "GIT_BRANCH",
+            "default_value": "main",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "GitHub token",
+            "description": "Only for a private repository. Leave empty if the repo is public.",
+            "env_variable": "GIT_TOKEN",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": true,
+            "rules": "string|max:191",
+            "field_type": "text"
+        },
+        {
+            "name": "Auto-update on start",
+            "description": "1 = re-download start.sh/nginx/bin from GitHub on every start. 0 = only if files are missing. Never overwrites www/.",
+            "env_variable": "AUTO_UPDATE",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:0,1",
+            "field_type": "text"
+        },
+        {
+            "name": "Yarus API port",
+            "description": "Внутренний порт API Яруса. Снаружи сайт открывается на порту сервера, nginx отправляет /api сюда. По умолчанию 3001. Не ставьте порт, совпадающий с портом сервера.",
+            "env_variable": "YARUS_API_PORT",
+            "default_value": "3001",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,65535",
+            "field_type": "text"
+        }
+    ]
+}
