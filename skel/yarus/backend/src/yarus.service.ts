@@ -230,6 +230,16 @@ export class YarusService {
     for (const s of SERVICE_PRESET) {
       await this.prisma.service.create({ data: { tenantId: tenant.id, ...s } });
     }
+    if (data.mode === 'seller_own') {
+      await this.prisma.client.create({
+        data: {
+          tenantId: tenant.id,
+          name: data.orgName,
+          legalEntityId: le.id,
+          email: data.ownerEmail.toLowerCase(),
+        },
+      });
+    }
     const hash = await bcrypt.hash(data.password, 10);
     const owner = await this.prisma.user.create({
       data: {

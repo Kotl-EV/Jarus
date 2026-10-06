@@ -104,13 +104,10 @@ prepare_yarus() {
     cd /home/container || true
     return 0
   fi
-  if [ ! -f /home/container/yarus/data/.seeded ]; then
-    echo "Yarus: loading demo data"
-    if npx tsx src/seed.ts; then
-      touch /home/container/yarus/data/.seeded
-    else
-      echo "Yarus: seed failed, the API will still start"
-    fi
+  if [ ! -f /home/container/yarus/data/.ready ]; then
+    mkdir -p /home/container/yarus/data
+    touch /home/container/yarus/data/.ready
+    echo "Yarus: empty warehouse database. Create the company on the login page."
   fi
   cd /home/container || true
   YARUS_READY=1
