@@ -7,7 +7,7 @@
     "exported_at": "2026-08-29T00:00:00+00:00",
     "name": "jarus",
     "author": "74097230+Kotl-EV@users.noreply.github.com",
-    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the built site on the server port and the API on 127.0.0.1:$YARUS_API_PORT (default 3001). PostgreSQL 15 runs inside the container on 127.0.0.1, data in yarus/pgdata. Docker image: ghcr.io/kotl-ev/nestcp-webhost:latest",
+    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the site on the primary allocation and the API on the next port. Leave YARUS_API_PORT at 3001. PostgreSQL 15 runs inside the container on 127.0.0.1, data in yarus/pgdata. Docker image: ghcr.io/kotl-ev/nestcp-webhost:latest",
     "features": null,
     "docker_images": {
         "NestCP GHCR": "ghcr.io/kotl-ev/nestcp-webhost:latest"
@@ -80,7 +80,7 @@
         },
         {
             "name": "Yarus API port",
-            "description": "Внутренний порт API Яруса. Снаружи сайт открывается на порту сервера, nginx отправляет /api сюда. По умолчанию 3001. Не ставьте порт, совпадающий с портом сервера.",
+            "description": "Оставьте 3001. API сам берёт следующий порт после основного: основной 32011 — API на 32012. Вписывайте номер только если дополнительный порт не следующий. Сайт открывается на основном порту, nginx проксирует /api.",
             "env_variable": "YARUS_API_PORT",
             "default_value": "3001",
             "user_viewable": true,

@@ -1,19 +1,98 @@
 #!/bin/bash
 # Sourced by start.sh. Publishes the Yarus web root and runs the API.
 
-yarus_resolve_port() {
-  local port="${YARUS_API_PORT:-3001}"
-  if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-    echo "Yarus: bad API port '${YARUS_API_PORT}', using 3001"
-    port=3001
+# Optional: allocations.properties or ALLOCATIONS='{"ip":[primary, extra]}'.
+# Stock Wings does not set either. A single extra port may also arrive as ADDITIONAL_PORT.
+yarus_additional_port() {
+  local raw="" line name f=/home/container/allocations.properties
+  # Some panels inject the extra allocation directly. Wings itself does not.
+  for name in ADDITIONAL_PORT ALLOC_1 SERVER_PORT_1 P_SERVER_PORT; do
+    raw="${!name-}"
+    if [[ "$raw" =~ ^[0-9]+$ ]] && [ "$raw" != "${SERVER_PORT:-}" ] && [ "$raw" -ge 1 ] && [ "$raw" -le 65535 ]; then
+      echo "$raw"
+      return 0
+    fi
+  done
+  raw=""
+  if [ -f "$f" ]; then
+    line=$(grep -E '^allocations[[:space:]]*=' "$f" | head -n 1 || true)
+    raw=${line#*=}
+    raw=${raw#"${raw%%[![:space:]]*}"}
   fi
-  if [ "$port" = "${SERVER_PORT:-}" ]; then
-    if [ "$port" = "3001" ]; then
-      port=3002
+  if [ -z "$raw" ] && [ -n "${ALLOCATIONS:-}" ]; then
+    raw=$ALLOCATIONS
+  fi
+  [ -n "$raw" ] || return 1
+  case "$raw" in
+    *'{{'*) return 1 ;;
+  esac
+  SERVER_PORT="${SERVER_PORT:-}" YARUS_ALLOC_RAW="$raw" python3 - <<'PY'
+import json, os, sys
+raw = os.environ.get("YARUS_ALLOC_RAW", "").strip().strip('"').strip("'")
+raw = raw.replace("\\:", ":").replace("\\=", "=").replace("\\\\", "\\")
+primary = os.environ.get("SERVER_PORT", "")
+try:
+    data = json.loads(raw)
+except Exception:
+    sys.exit(1)
+ports = []
+if isinstance(data, dict):
+    for value in data.values():
+        if isinstance(value, list):
+            ports.extend(value)
+        elif isinstance(value, int):
+            ports.append(value)
+elif isinstance(data, list):
+    ports = data
+for port in ports:
+    text = str(port)
+    if text.isdigit() and text != primary and 1 <= int(text) <= 65535:
+        print(text)
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+yarus_port_ok() {
+  [[ "${1:-}" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+# Stock Wings only publishes SERVER_PORT. The next port is the usual additional allocation.
+yarus_next_port() {
+  local next=""
+  yarus_port_ok "${SERVER_PORT:-}" || return 1
+  next=$((SERVER_PORT + 1))
+  if [ "$next" -gt 65535 ]; then
+    if [ "$SERVER_PORT" = "3001" ]; then
+      echo 3002
+    else
+      echo 3001
+    fi
+    return 0
+  fi
+  echo "$next"
+}
+
+yarus_resolve_port() {
+  local port="" extra="" manual="${YARUS_API_PORT:-3001}"
+  extra=$(yarus_additional_port 2>/dev/null || true)
+  if yarus_port_ok "$extra" && [ "$extra" != "${SERVER_PORT:-}" ]; then
+    port=$extra
+    echo "Yarus: API port ${port} taken from the additional allocation"
+  elif yarus_port_ok "$manual" && [ "$manual" != "3001" ] && [ "$manual" != "${SERVER_PORT:-}" ]; then
+    port=$manual
+    echo "Yarus: API port ${port} from YARUS_API_PORT"
+  else
+    port=$(yarus_next_port 2>/dev/null || true)
+    if yarus_port_ok "$port" && [ "$port" != "${SERVER_PORT:-}" ]; then
+      echo "Yarus: API port ${port} is the next port after ${SERVER_PORT}. Leave YARUS_API_PORT at 3001."
     else
       port=3001
+      if [ "$port" = "${SERVER_PORT:-}" ]; then
+        port=3002
+      fi
+      echo "Yarus: API port ${port}"
     fi
-    echo "Yarus: API port is the same as the public port, using ${port}"
   fi
   YARUS_API_PORT="$port"
   export YARUS_API_PORT
