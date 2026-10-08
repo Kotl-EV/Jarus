@@ -7,7 +7,7 @@
     "exported_at": "2026-08-29T00:00:00+00:00",
     "name": "jarus",
     "author": "pazitiv4ik@users.noreply.github.com",
-    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the built site on the server port and the API on 127.0.0.1:$YARUS_API_PORT (default 3001) with a SQLite file in yarus/data. Docker image: ghcr.io/pazitiv4ik/nestcp-webhost:latest",
+    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the built site on the server port and the API on 127.0.0.1:$YARUS_API_PORT (default 3001). PostgreSQL 15 runs inside the container on 127.0.0.1, data in yarus/pgdata. Docker image: ghcr.io/pazitiv4ik/nestcp-webhost:latest",
     "features": null,
     "docker_images": {
         "NestCP GHCR": "ghcr.io/pazitiv4ik/nestcp-webhost:latest"

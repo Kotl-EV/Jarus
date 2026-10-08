@@ -165,6 +165,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     kill "$pid" >/dev/null 2>&1 || true
   done
+  if declare -F yarus_stop_postgres >/dev/null 2>&1; then
+    yarus_stop_postgres
+  fi
   exit 0
 }
 trap cleanup INT TERM

@@ -25,6 +25,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs python3 make g++ \
+    && apt-get install -y --no-install-recommends postgresql-common \
+    && sed -ri 's/^[# ]*(create_main_cluster).*/\1 = false/' /etc/postgresql-common/createcluster.conf \
+    && grep -q '^create_main_cluster = false' /etc/postgresql-common/createcluster.conf \
+    && apt-get install -y --no-install-recommends postgresql-15 \
     && npm install -g npm@11 \
     && rm -rf /var/lib/apt/lists/* /tmp/debsuryorg-archive-keyring.deb \
     && useradd -m -d /home/container -s /bin/bash container \

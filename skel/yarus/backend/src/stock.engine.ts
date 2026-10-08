@@ -80,22 +80,18 @@ async function bump(
   delta: number,
   allowNegative: boolean,
 ) {
-  try {
-    await tx.$queryRaw`
-      SELECT id FROM "StockBalance"
-      WHERE "tenantId" = ${key.tenantId}
-        AND "warehouseId" = ${key.warehouseId}
-        AND "cellId" = ${key.cellId}
-        AND "productId" = ${key.productId}
-        AND "lotId" = ${key.lotId}
-        AND "containerId" = ${key.containerId}
-        AND "stockType" = ${key.stockType}
-        AND "clientId" = ${key.clientId}
-      FOR UPDATE
-    `;
-  } catch {
-    /* SQLite has no FOR UPDATE */
-  }
+  await tx.$queryRaw`
+    SELECT id FROM "StockBalance"
+    WHERE "tenantId" = ${key.tenantId}
+      AND "warehouseId" = ${key.warehouseId}
+      AND "cellId" = ${key.cellId}
+      AND "productId" = ${key.productId}
+      AND "lotId" = ${key.lotId}
+      AND "containerId" = ${key.containerId}
+      AND "stockType" = ${key.stockType}
+      AND "clientId" = ${key.clientId}
+    FOR UPDATE
+  `;
 
   const updated = await tx.stockBalance.updateMany({
     where: key,

@@ -42,36 +42,142 @@ yarus_seed_tree() {
   rm -f /home/container/www/yarus/public_html/index.php
 }
 
+yarus_pg_bin() {
+  local candidate="" d
+  for d in /usr/lib/postgresql/*/bin; do
+    if [ -x "$d/postgres" ] && [ -x "$d/initdb" ]; then
+      candidate="$d"
+    fi
+  done
+  [ -n "$candidate" ] || return 1
+  printf '%s\n' "$candidate"
+}
+
+yarus_pg_port() {
+  local port=5432
+  if [ "$port" = "${SERVER_PORT:-}" ] || [ "$port" = "${YARUS_API_PORT:-}" ]; then
+    port=5433
+  fi
+  printf '%s\n' "$port"
+}
+
+# Prints the cluster password. Creates yarus/pg.secret on the first call.
+yarus_pg_secret() {
+  local secret=/home/container/yarus/pg.secret
+  mkdir -p /home/container/yarus
+  if [ ! -s "$secret" ]; then
+    python3 -c 'import secrets,pathlib; pathlib.Path("/home/container/yarus/pg.secret").write_text(secrets.token_hex(24))'
+    chmod 600 "$secret" || return 1
+  fi
+  tr -d '\r\n' < "$secret"
+}
+
+yarus_start_postgres() {
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "Yarus: PostgreSQL cannot run as root. Wings starts the server as the container user."
+    return 1
+  fi
+  YARUS_PG_BIN="$(yarus_pg_bin)" || {
+    echo "Yarus: PostgreSQL is not in this image. Rebuild ghcr.io/pazitiv4ik/nestcp-webhost and restart the server."
+    return 1
+  }
+  YARUS_PGDATA=/home/container/yarus/pgdata
+  YARUS_PGPORT="$(yarus_pg_port)"
+  local secret=/home/container/yarus/pg.secret
+  local logfile=/home/container/logs/postgres.log
+  local pass created_secret=0
+  mkdir -p /home/container/yarus /home/container/logs /home/container/run
+  chmod 755 /home/container/run || true
+  if [ ! -s "$secret" ]; then
+    created_secret=1
+  fi
+  pass="$(yarus_pg_secret)" || return 1
+  if [ ! -s "$YARUS_PGDATA/PG_VERSION" ]; then
+    echo "Yarus: creating PostgreSQL cluster in yarus/pgdata"
+    rm -rf "$YARUS_PGDATA"
+    mkdir -p "$YARUS_PGDATA"
+    chmod 700 "$YARUS_PGDATA"
+    if ! "$YARUS_PG_BIN/initdb" -D "$YARUS_PGDATA" --username=postgres --pwfile="$secret" --auth-local=trust --auth-host=scram-sha-256 --locale=C.UTF-8 --encoding=UTF8 >>"$logfile" 2>&1; then
+      echo "Yarus: initdb failed. Tail of logs/postgres.log:"
+      tail -n 40 "$logfile" 2>/dev/null || true
+      return 1
+    fi
+    created_secret=0
+  fi
+  if ! "$YARUS_PG_BIN/pg_isready" -h 127.0.0.1 -p "$YARUS_PGPORT" -q; then
+    echo "Yarus: starting PostgreSQL on 127.0.0.1:${YARUS_PGPORT}"
+    if ! "$YARUS_PG_BIN/pg_ctl" -D "$YARUS_PGDATA" -w -t 40 -l "$logfile" \
+      -o "-c listen_addresses=127.0.0.1 -c port=${YARUS_PGPORT} -c unix_socket_directories=/home/container/run -c shared_buffers=16MB -c max_connections=30 -c shared_memory_type=mmap -c dynamic_shared_memory_type=mmap -c huge_pages=off" \
+      start; then
+      echo "Yarus: PostgreSQL failed to start. Tail of logs/postgres.log:"
+      tail -n 40 "$logfile" 2>/dev/null || true
+      return 1
+    fi
+  fi
+  local psql="$YARUS_PG_BIN/psql"
+  local socket_args=(-h /home/container/run -p "$YARUS_PGPORT" -U postgres)
+  if [ "$created_secret" -eq 1 ]; then
+    if ! "$psql" "${socket_args[@]}" -d postgres -v ON_ERROR_STOP=1 -c "ALTER USER postgres PASSWORD '${pass}'" >>"$logfile" 2>&1; then
+      echo "Yarus: could not set the PostgreSQL password. Tail of logs/postgres.log:"
+      tail -n 40 "$logfile" 2>/dev/null || true
+      return 1
+    fi
+  fi
+  if ! "$psql" "${socket_args[@]}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='yarus'" | grep -q 1; then
+    if ! "$psql" "${socket_args[@]}" -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE yarus OWNER postgres" >>"$logfile" 2>&1; then
+      echo "Yarus: could not create database yarus. Tail of logs/postgres.log:"
+      tail -n 40 "$logfile" 2>/dev/null || true
+      return 1
+    fi
+  fi
+  YARUS_DATABASE_URL="postgresql://postgres:${pass}@127.0.0.1:${YARUS_PGPORT}/yarus?schema=public"
+  export YARUS_DATABASE_URL
+}
+
+yarus_stop_postgres() {
+  if [ -z "${YARUS_PG_BIN:-}" ] || [ -z "${YARUS_PGDATA:-}" ] || [ ! -s "${YARUS_PGDATA}/PG_VERSION" ]; then
+    return 0
+  fi
+  "$YARUS_PG_BIN/pg_ctl" -D "$YARUS_PGDATA" -m fast -w -t 20 stop >/dev/null 2>&1 || true
+}
+
 yarus_env() {
   local envf=/home/container/yarus/backend/.env
+  local dburl="${YARUS_DATABASE_URL:-}"
   [ -f /home/container/yarus/backend/package.json ] || return 0
+  if [ -z "$dburl" ]; then
+    echo "Yarus: PostgreSQL URL is empty"
+    return 1
+  fi
   if [ ! -f "$envf" ]; then
     cat > "$envf" <<EOF
 PORT=${YARUS_API_PORT}
 WEB_ORIGIN=${YARUS_WEB_ORIGIN:-http://127.0.0.1:${SERVER_PORT}}
 JWT_SECRET=${JWT_SECRET:-yarus-dev-jwt-secret-change}
 ENCRYPTION_KEY=${ENCRYPTION_KEY:-yarus-dev-key-change-me}
-DATABASE_URL=${DATABASE_URL:-file:/home/container/yarus/data/yarus.db}
+DATABASE_URL=${dburl}
 EOF
   fi
+  chmod 600 "$envf" || true
   if grep -q '^PORT=' "$envf"; then
     sed -i "s#^PORT=.*#PORT=${YARUS_API_PORT}#" "$envf"
   else
     echo "PORT=${YARUS_API_PORT}" >> "$envf"
   fi
-  if grep -Eq 'DATABASE_URL=.*@(127\.0\.0\.1|localhost):5432' "$envf"; then
-    echo "Yarus: localhost Postgres from a PC .env is not reachable here, using the SQLite file"
-    sed -i 's#^DATABASE_URL=.*#DATABASE_URL="file:/home/container/yarus/data/yarus.db"#' "$envf"
+  if grep -q '^DATABASE_URL=' "$envf"; then
+    sed -i "s#^DATABASE_URL=.*#DATABASE_URL=${dburl}#" "$envf"
+  else
+    echo "DATABASE_URL=${dburl}" >> "$envf"
   fi
+  export DATABASE_URL="$dburl"
 }
 
-yarus_sqlite_schema() {
+yarus_postgres_schema() {
   local schema=/home/container/yarus/backend/prisma/schema.prisma
-  local envf=/home/container/yarus/backend/.env
-  [ -f "$schema" ] && [ -f "$envf" ] || return 0
-  if grep -q 'file:' "$envf" && grep -q 'provider *= *"postgresql"' "$schema"; then
-    sed -i 's/provider *= *"postgresql"/provider = "sqlite"/' "$schema"
-    echo "Yarus: Prisma provider set to sqlite"
+  [ -f "$schema" ] || return 0
+  if grep -q 'provider *= *"sqlite"' "$schema"; then
+    sed -i 's/provider *= *"sqlite"/provider = "postgresql"/' "$schema"
+    echo "Yarus: Prisma provider set to postgresql"
   fi
 }
 
@@ -85,8 +191,15 @@ prepare_yarus() {
     echo "Yarus: backend is missing, nginx will start without the API"
     return 0
   fi
-  yarus_env
-  yarus_sqlite_schema
+  if ! yarus_start_postgres; then
+    cd /home/container || true
+    return 0
+  fi
+  if ! yarus_env; then
+    cd /home/container || true
+    return 0
+  fi
+  yarus_postgres_schema
   cd /home/container/yarus/backend || return 0
   export PORT="${YARUS_API_PORT}"
   export HOME=/home/container
@@ -105,10 +218,13 @@ prepare_yarus() {
     cd /home/container || true
     return 0
   fi
-  if [ ! -f /home/container/yarus/data/.ready ]; then
+  if [ ! -f /home/container/yarus/data/.pg-ready ]; then
     mkdir -p /home/container/yarus/data
-    touch /home/container/yarus/data/.ready
-    echo "Yarus: empty warehouse database. Create the company on the login page."
+    touch /home/container/yarus/data/.pg-ready
+    echo "Yarus: empty PostgreSQL database. Create the company on the login page."
+    if [ -f /home/container/yarus/data/yarus.db ]; then
+      echo "Yarus: SQLite file yarus/data/yarus.db is ignored."
+    fi
   fi
   cd /home/container || true
   YARUS_READY=1
@@ -123,6 +239,17 @@ start_yarus_api() {
 }
 
 yarus_watch() {
+  if [ -n "${YARUS_PG_BIN:-}" ] && [ -n "${YARUS_PGDATA:-}" ]; then
+    if ! "$YARUS_PG_BIN/pg_isready" -h 127.0.0.1 -p "${YARUS_PGPORT:-5432}" -q; then
+      local now
+      now=$(date +%s)
+      if [ -z "${YARUS_PG_RESTART_AT:-}" ] || [ $((now - YARUS_PG_RESTART_AT)) -ge 15 ]; then
+        YARUS_PG_RESTART_AT=$now
+        echo "Yarus: PostgreSQL is down, starting it again"
+        yarus_start_postgres || true
+      fi
+    fi
+  fi
   [ -n "${YARUS_PID:-}" ] || return 0
   if kill -0 "$YARUS_PID" >/dev/null 2>&1; then
     return 0
