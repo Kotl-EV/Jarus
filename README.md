@@ -16,14 +16,14 @@
 4. Settings → Packages → убедитесь, что пакет `nestcp-webhost` после первой сборки **Public** (Package settings → Change visibility).
 5. Дождитесь зелёного workflow **Build NestCP image**.
 
-Образ: `ghcr.io/pazitiv4ik/nestcp-webhost:latest`
+Образ: `ghcr.io/kotl-ev/nestcp-webhost:latest`
 
 ## 2. Яйцо
 
-Откройте `egg-jarus.json` и замените `OWNER` на GitHub-логин:
+В `egg-jarus.json` уже указаны этот репозиторий и образ:
 
-- `docker_images` → `ghcr.io/OWNER/nestcp-webhost:latest`
-- переменная `GIT_REPO` → `https://github.com/OWNER/nestcp-webhost`
+- `docker_images` → `ghcr.io/kotl-ev/nestcp-webhost:latest`
+- переменная `GIT_REPO` → `https://github.com/Kotl-EV/Jarus`
 
 Pterodactyl → Nests → Import egg.
 
@@ -33,7 +33,7 @@ Pterodactyl → Nests → Import egg.
 
 | Переменная   | Пример                                      |
 |-------------|---------------------------------------------|
-| `GIT_REPO`  | `https://github.com/OWNER/nestcp-webhost`   |
+| `GIT_REPO`  | `https://github.com/Kotl-EV/Jarus`          |
 | `GIT_BRANCH`| `main`                                      |
 | `GIT_TOKEN` | только для private-репо                     |
 | `AUTO_UPDATE` | `0` или `1` — тянуть скрипты при каждом старте |

@@ -47,7 +47,7 @@ if [ ! -f /home/container/start.sh ] && [ -n "${GIT_REPO:-}" ] && [ -f /opt/nest
 fi
 
 if [ ! -f /home/container/start.sh ]; then
-    echo "ERROR: start.sh still missing. Use image ghcr.io/pazitiv4ik/nestcp-webhost:latest"
+    echo "ERROR: start.sh still missing. Use image ghcr.io/kotl-ev/nestcp-webhost:latest"
     ls -la /home/container /opt/nestcp/skel 2>/dev/null || true
     exit 1
 fi

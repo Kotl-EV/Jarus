@@ -99,7 +99,7 @@ yarus_pg_own() {
 
 yarus_start_postgres() {
   YARUS_PG_BIN="$(yarus_pg_bin)" || {
-    echo "Yarus: PostgreSQL is not in this image. Rebuild ghcr.io/pazitiv4ik/nestcp-webhost and restart the server."
+    echo "Yarus: PostgreSQL is not in this image. Rebuild ghcr.io/kotl-ev/nestcp-webhost and restart the server."
     return 1
   }
   YARUS_PGDATA=/home/container/yarus/pgdata

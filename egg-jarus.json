@@ -1,16 +1,16 @@
 {
-    "_comment": "Pazitiv4ik/nestcp-egg — GHCR image ghcr.io/pazitiv4ik/nestcp-webhost:latest",
+    "_comment": "Kotl-EV/Jarus — GHCR image ghcr.io/kotl-ev/nestcp-webhost:latest",
     "meta": {
         "version": "PTDL_v2",
         "update_url": null
     },
     "exported_at": "2026-08-29T00:00:00+00:00",
     "name": "jarus",
-    "author": "pazitiv4ik@users.noreply.github.com",
-    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the built site on the server port and the API on 127.0.0.1:$YARUS_API_PORT (default 3001). PostgreSQL 15 runs inside the container on 127.0.0.1, data in yarus/pgdata. Docker image: ghcr.io/pazitiv4ik/nestcp-webhost:latest",
+    "author": "74097230+Kotl-EV@users.noreply.github.com",
+    "description": "Nginx + PHP 8.1-8.4 + Node. On boot it also starts Yarus WMS: the built site on the server port and the API on 127.0.0.1:$YARUS_API_PORT (default 3001). PostgreSQL 15 runs inside the container on 127.0.0.1, data in yarus/pgdata. Docker image: ghcr.io/kotl-ev/nestcp-webhost:latest",
     "features": null,
     "docker_images": {
-        "NestCP GHCR": "ghcr.io/pazitiv4ik/nestcp-webhost:latest"
+        "NestCP GHCR": "ghcr.io/kotl-ev/nestcp-webhost:latest"
     },
     "file_denylist": [],
     "startup": "bash start.sh",
@@ -42,7 +42,7 @@
             "name": "GitHub repo",
             "description": "Public repo URL. Upload the egg/ folder as the repository root.",
             "env_variable": "GIT_REPO",
-            "default_value": "https://github.com/Pazitiv4ik/nestcp-egg",
+            "default_value": "https://github.com/Kotl-EV/Jarus",
             "user_viewable": true,
             "user_editable": true,
             "rules": "required|string|max:191",
