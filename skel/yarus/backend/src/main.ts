@@ -44,8 +44,9 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
   fs.writeFileSync(path.join(dataDir, 'openapi.json'), JSON.stringify(document, null, 2));
   const port = Number(process.env.PORT || 3001);
-  await app.listen(port);
-  console.log(`Ярус API http://localhost:${port}/api  docs: /api/docs`);
+  // Explicit IPv4. Node's default "::" refuses 127.0.0.1 when ipv6.bindv6only=1, and nginx then returns 502.
+  await app.listen(port, '0.0.0.0');
+  console.log(`Ярус API http://127.0.0.1:${port}/api  docs: /api/docs`);
 }
 
 bootstrap();
