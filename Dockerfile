@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends postgresql-common \
     && sed -ri 's/^[# ]*(create_main_cluster).*/\1 = false/' /etc/postgresql-common/createcluster.conf \
     && grep -q '^create_main_cluster = false' /etc/postgresql-common/createcluster.conf \
-    && apt-get install -y --no-install-recommends postgresql-15 \
+    && apt-get install -y --no-install-recommends postgresql-15 libnss-wrapper \
     && npm install -g npm@11 \
     && rm -rf /var/lib/apt/lists/* /tmp/debsuryorg-archive-keyring.deb \
     && useradd -m -d /home/container -s /bin/bash container \
@@ -46,6 +46,6 @@ RUN sed -i 's/\r$//' /entrypoint.sh /opt/nestcp/fetch.sh /opt/nestcp/skel/start.
 
 WORKDIR /home/container
 
-# Wings replaces process user (typically uid 988) and uses a read-only rootfs.
-# Do not USER container here — Wings sets User at runtime.
+# Wings replaces the process user with an arbitrary uid (often 999) and uses a read-only rootfs.
+# libnss-wrapper gives PostgreSQL a passwd entry for that uid. Do not USER here.
 CMD ["/bin/bash", "/entrypoint.sh"]

@@ -156,19 +156,69 @@ yarus_pg_port() {
   printf '%s\n' "$port"
 }
 
+# Debian ships the SONAME (libnss_wrapper.so.0). The unversioned .so is in the -dev package.
+yarus_nss_lib() {
+  local f
+  for f in /usr/lib/*/libnss_wrapper.so /usr/lib/libnss_wrapper.so \
+           /usr/lib/*/libnss_wrapper.so.0 /usr/lib/libnss_wrapper.so.0; do
+    if [ -f "$f" ]; then
+      printf '%s\n' "$f"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Wings runs as an arbitrary uid (often 999) that is not in /etc/passwd, and the rootfs is read-only.
+# nss_wrapper answers getpwuid for PostgreSQL. LD_PRELOAD stays on the postgres command, not the shell.
+yarus_pg_ensure_user() {
+  if id -un >/dev/null 2>&1 && id -gn >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -n "${YARUS_NSS_PRELOAD:-}" ] && [ -f "${YARUS_NSS_PASSWD:-}" ] && [ -f "${YARUS_NSS_GROUP:-}" ]; then
+    return 0
+  fi
+  local lib dir uid gid
+  lib=$(yarus_nss_lib) || {
+    echo "Yarus: uid $(id -u) has no name in /etc/passwd, and libnss_wrapper is missing. Rebuild the image."
+    return 1
+  }
+  uid=$(id -u)
+  gid=$(id -g)
+  dir=/home/container/yarus/nss
+  mkdir -p "$dir"
+  printf 'yarus:x:%s:%s:yarus:/home/container:/bin/bash\n' "$uid" "$gid" > "$dir/passwd"
+  printf 'yarus:x:%s:\n' "$gid" > "$dir/group"
+  chmod 644 "$dir/passwd" "$dir/group"
+  YARUS_NSS_PRELOAD="$lib"
+  YARUS_NSS_PASSWD="$dir/passwd"
+  YARUS_NSS_GROUP="$dir/group"
+  echo "Yarus: uid ${uid} is not in /etc/passwd, PostgreSQL will use a local passwd"
+}
+
 # Postgres refuses to run as root. Wings sometimes starts the container as root.
 yarus_pg_run() {
-  if [ "$(id -u)" -ne 0 ]; then
-    LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" "$@"
+  if [ "$(id -u)" -eq 0 ]; then
+    if ! id container >/dev/null 2>&1; then
+      echo "Yarus: the container user is missing, PostgreSQL cannot run as root"
+      return 1
+    fi
+    local runner=/usr/sbin/runuser
+    [ -x "$runner" ] || runner=runuser
+    "$runner" -u container -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 HOME=/home/container "$@"
     return $?
   fi
-  if ! id container >/dev/null 2>&1; then
-    echo "Yarus: the container user is missing, PostgreSQL cannot run as root"
-    return 1
+  yarus_pg_ensure_user || return 1
+  if [ -n "${YARUS_NSS_PRELOAD:-}" ]; then
+    LD_PRELOAD="$YARUS_NSS_PRELOAD" \
+      NSS_WRAPPER_PASSWD="$YARUS_NSS_PASSWD" \
+      NSS_WRAPPER_GROUP="$YARUS_NSS_GROUP" \
+      LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" \
+      HOME=/home/container \
+      "$@"
+    return $?
   fi
-  local runner=/usr/sbin/runuser
-  [ -x "$runner" ] || runner=runuser
-  "$runner" -u container -- env LANG=C.UTF-8 LC_ALL=C.UTF-8 HOME=/home/container "$@"
+  LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" HOME=/home/container "$@"
 }
 
 yarus_pg_own() {
@@ -184,6 +234,7 @@ yarus_start_postgres() {
   YARUS_PGDATA=/home/container/yarus/pgdata
   YARUS_PGPORT="$(yarus_pg_port)"
   local logfile=/home/container/logs/postgres.log
+  local attempt=/home/container/logs/initdb.attempt
   local sockdir=/home/container/yarus/pg-run
   mkdir -p /home/container/yarus /home/container/logs "$sockdir"
   touch "$logfile"
@@ -194,18 +245,29 @@ yarus_start_postgres() {
     mkdir -p "$YARUS_PGDATA"
     chmod 700 "$YARUS_PGDATA"
     yarus_pg_own "$YARUS_PGDATA"
-    if ! yarus_pg_run "$YARUS_PG_BIN/initdb" -D "$YARUS_PGDATA" --username=postgres --auth-local=trust --auth-host=trust --locale=C.UTF-8 --encoding=UTF8 >>"$logfile" 2>&1; then
+    : > "$attempt"
+    if ! yarus_pg_run "$YARUS_PG_BIN/initdb" -D "$YARUS_PGDATA" --username=postgres --auth-local=trust --auth-host=trust --locale=C.UTF-8 --encoding=UTF8 >>"$attempt" 2>&1; then
+      cat "$attempt" >> "$logfile"
+      if grep -q "user does not exist" "$attempt"; then
+        echo "Yarus: initdb failed because uid $(id -u) has no passwd entry. Tail of logs/postgres.log:"
+        tail -n 40 "$logfile" 2>/dev/null || true
+        return 1
+      fi
       echo "Yarus: initdb with C.UTF-8 failed, retrying with locale C"
       rm -rf "$YARUS_PGDATA"
       mkdir -p "$YARUS_PGDATA"
       chmod 700 "$YARUS_PGDATA"
       yarus_pg_own "$YARUS_PGDATA"
-      if ! yarus_pg_run "$YARUS_PG_BIN/initdb" -D "$YARUS_PGDATA" --username=postgres --auth-local=trust --auth-host=trust --locale=C --encoding=UTF8 >>"$logfile" 2>&1; then
+      : > "$attempt"
+      if ! yarus_pg_run "$YARUS_PG_BIN/initdb" -D "$YARUS_PGDATA" --username=postgres --auth-local=trust --auth-host=trust --locale=C --encoding=UTF8 >>"$attempt" 2>&1; then
+        cat "$attempt" >> "$logfile"
         echo "Yarus: initdb failed. Tail of logs/postgres.log:"
         tail -n 40 "$logfile" 2>/dev/null || true
         return 1
       fi
     fi
+    cat "$attempt" >> "$logfile"
+    rm -f "$attempt"
   fi
   yarus_pg_own -R "$YARUS_PGDATA"
   cat > "$YARUS_PGDATA/yarus.conf" <<EOF
@@ -228,7 +290,7 @@ EOF
   fi
   chmod 600 "$YARUS_PGDATA/yarus.conf" "$YARUS_PGDATA/pg_hba.conf" || true
   yarus_pg_own "$YARUS_PGDATA/yarus.conf" "$YARUS_PGDATA/pg_hba.conf" "$YARUS_PGDATA/postgresql.conf"
-  if ! "$YARUS_PG_BIN/pg_isready" -h 127.0.0.1 -p "$YARUS_PGPORT" -q; then
+  if ! yarus_pg_run "$YARUS_PG_BIN/pg_isready" -h 127.0.0.1 -p "$YARUS_PGPORT" -q; then
     echo "Yarus: starting PostgreSQL on 127.0.0.1:${YARUS_PGPORT}"
     if ! yarus_pg_run "$YARUS_PG_BIN/pg_ctl" -D "$YARUS_PGDATA" -w -t 40 -l "$logfile" start; then
       echo "Yarus: PostgreSQL failed to start. Tail of logs/postgres.log:"
@@ -237,8 +299,8 @@ EOF
     fi
   fi
   local psql="$YARUS_PG_BIN/psql"
-  if ! "$psql" -h 127.0.0.1 -p "$YARUS_PGPORT" -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='yarus'" | grep -q 1; then
-    if ! "$psql" -h 127.0.0.1 -p "$YARUS_PGPORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE yarus OWNER postgres" >>"$logfile" 2>&1; then
+  if ! yarus_pg_run "$psql" -h 127.0.0.1 -p "$YARUS_PGPORT" -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='yarus'" | grep -q 1; then
+    if ! yarus_pg_run "$psql" -h 127.0.0.1 -p "$YARUS_PGPORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE yarus OWNER postgres" >>"$logfile" 2>&1; then
       echo "Yarus: could not create database yarus. Tail of logs/postgres.log:"
       tail -n 40 "$logfile" 2>/dev/null || true
       return 1
@@ -360,7 +422,7 @@ start_yarus_api() {
 
 yarus_watch() {
   if [ -n "${YARUS_PG_BIN:-}" ] && [ -n "${YARUS_PGDATA:-}" ]; then
-    if ! "$YARUS_PG_BIN/pg_isready" -h 127.0.0.1 -p "${YARUS_PGPORT:-5432}" -q; then
+    if ! yarus_pg_run "$YARUS_PG_BIN/pg_isready" -h 127.0.0.1 -p "${YARUS_PGPORT:-5432}" -q; then
       local now
       now=$(date +%s)
       if [ -z "${YARUS_PG_RESTART_AT:-}" ] || [ $((now - YARUS_PG_RESTART_AT)) -ge 15 ]; then
